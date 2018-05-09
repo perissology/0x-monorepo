@@ -234,7 +234,7 @@ export class Compiler {
             sourceTreeHashHex,
             compiler: {
                 name: 'solc',
-                version: solcVersion,
+                version: fullSolcVersion,
                 settings: this._compilerSettings,
             },
         };

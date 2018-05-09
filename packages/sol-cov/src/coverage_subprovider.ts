@@ -1,10 +1,12 @@
 import { Callback, ErrorCallback, NextCallback, Subprovider } from '@0xproject/subproviders';
 import { BlockParam, CallData, JSONRPCRequestPayload, TransactionTrace, TxData } from '@0xproject/types';
+import * as fs from 'fs';
 import * as _ from 'lodash';
 import { Lock } from 'semaphore-async-await';
 
 import { constants } from './constants';
 import { CoverageManager } from './coverage_manager';
+import { getTracesByContractAddress } from './trace';
 import { TraceInfoExistingContract, TraceInfoNewContract } from './types';
 
 interface MaybeFakeTxData extends TxData {
@@ -119,8 +121,10 @@ export class CoverageSubprovider extends Subprovider {
         };
         const jsonRPCResponsePayload = await this.emitPayloadAsync(payload);
         const trace: TransactionTrace = jsonRPCResponsePayload.result;
-        const coveredPcs = _.map(trace.structLogs, log => log.pc);
         if (address === constants.NEW_CONTRACT) {
+            // TODO handle calls to external contracts and contract creations from within the constructor
+            const structLogsOnDepth0 = _.filter(trace.structLogs, { depth: 0 });
+            const coveredPcs = _.map(structLogsOnDepth0, log => log.pc);
             const traceInfo: TraceInfoNewContract = {
                 coveredPcs,
                 txHash,
@@ -129,15 +133,20 @@ export class CoverageSubprovider extends Subprovider {
             };
             this._coverageManager.appendTraceInfo(traceInfo);
         } else {
-            payload = { method: 'eth_getCode', params: [address, 'latest'] };
-            const runtimeBytecode = (await this.emitPayloadAsync(payload)).result;
-            const traceInfo: TraceInfoExistingContract = {
-                coveredPcs,
-                txHash,
-                address,
-                runtimeBytecode,
-            };
-            this._coverageManager.appendTraceInfo(traceInfo);
+            const tracesByContractAddress = getTracesByContractAddress(trace.structLogs, address);
+            for (const subcallAddress of _.keys(tracesByContractAddress)) {
+                payload = { method: 'eth_getCode', params: [subcallAddress, 'latest'] };
+                const runtimeBytecode = (await this.emitPayloadAsync(payload)).result;
+                const traceForThatSubcall = tracesByContractAddress[subcallAddress];
+                const coveredPcs = _.map(traceForThatSubcall, log => log.pc);
+                const traceInfo: TraceInfoExistingContract = {
+                    coveredPcs,
+                    txHash,
+                    address: subcallAddress,
+                    runtimeBytecode,
+                };
+                this._coverageManager.appendTraceInfo(traceInfo);
+            }
         }
     }
     private async _recordCallTraceAsync(callData: Partial<CallData>, blockNumber: BlockParam): Promise<void> {

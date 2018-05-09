@@ -7,7 +7,7 @@
     "scripts": {
         "build:watch": "tsc -w",
         "lint": "tslint --project .",
-        "test": "run-s clean build compile_test run_mocha",
+        "test": "run-s clean build run_mocha",
         "test:coverage": "nyc npm run test --all && yarn coverage:report:lcov",
         "coverage:report:lcov": "nyc report --reporter=text-lcov > coverage/lcov.info",
         "test:circleci": "yarn test:coverage",
@@ -46,6 +46,7 @@
         "@0xproject/subproviders": "^0.10.1",
         "@0xproject/sol-compiler": "^0.4.3",
         "@0xproject/types": "^0.6.3",
+        "@0xproject/utils": "^0.6.1",
         "@0xproject/typescript-typings": "^0.3.1",
         "ethereumjs-util": "^5.1.1",
         "glob": "^7.1.2",

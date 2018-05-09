@@ -140,8 +140,15 @@ export class CoverageManager {
                 let runtimeBytecode = (traceInfo as TraceInfoExistingContract).runtimeBytecode;
                 runtimeBytecode = addHexPrefix(runtimeBytecode);
                 const contractData = _.find(this._contractsData, contractDataCandidate => {
+                    // Library linking placeholder: __ConvertLib____________________________
                     let runtimeBytecodeRegex = contractDataCandidate.runtimeBytecode.replace(/_.*_/, '.*');
+                    // Last 86 characters is solidity compiler metadata that's different between compilations
                     runtimeBytecodeRegex = runtimeBytecodeRegex.replace(/.{86}$/, '');
+                    // Libraries contain their own address at the beginning of the code and it's impossible to know it in advance
+                    runtimeBytecodeRegex = runtimeBytecodeRegex.replace(
+                        /^0x730000000000000000000000000000000000000000/,
+                        '0x73........................................',
+                    );
                     return !_.isNull(runtimeBytecode.match(runtimeBytecodeRegex));
                 }) as ContractData;
                 if (_.isUndefined(contractData)) {

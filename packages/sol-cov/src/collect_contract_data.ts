@@ -15,6 +15,7 @@ export async function collectContractsDataAsync(artifactsPath: string, sourcesPa
         const artifact = JSON.parse(fs.readFileSync(artifactFileName).toString());
         const isTruffleArtifact = !_.isUndefined(artifact.updatedAt);
         if (isTruffleArtifact) {
+            const compilerVersion = artifact.compiler.version;
             const artifactsDir = path.join(artifactsPath, '0x-artifacts');
             const compilerOptions: CompilerOptions = {
                 contractsDir: sourcesPath,
@@ -27,12 +28,13 @@ export async function collectContractsDataAsync(artifactsPath: string, sourcesPa
                     },
                 },
                 contracts: '*',
-                solcVersion: '0.4.19',
+                // "0.4.23+commit.124ca40d.Emscripten.clang" -> "0.4.23"
+                solcVersion: compilerVersion.split('+')[0],
             };
             const compiler = new Compiler(compilerOptions);
             await compiler.compileAsync();
             const contractsDataFrom0xArtifacts = await collectContractsDataAsync(artifactsDir, sourcesPath);
-            rimraf.sync(artifactsDir);
+            // rimraf.sync(artifactsDir);
             return contractsDataFrom0xArtifacts;
         } else {
             const sources = _.keys(artifact.sources);
