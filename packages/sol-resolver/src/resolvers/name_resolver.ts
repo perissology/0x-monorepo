@@ -6,6 +6,8 @@ import { ContractSource } from '../types';
 
 import { EnumerableResolver } from './enumerable_resolver';
 
+const SOLIDITY_FILE_EXTENSION = '.sol';
+
 export class NameResolver extends EnumerableResolver {
     private _contractsDir: string;
     constructor(contractsDir: string) {
@@ -13,7 +15,6 @@ export class NameResolver extends EnumerableResolver {
         this._contractsDir = contractsDir;
     }
     public resolveIfExists(lookupContractName: string): ContractSource | undefined {
-        const SOLIDITY_FILE_EXTENSION = '.sol';
         let contractSource: ContractSource | undefined;
         const onFile = (filePath: string) => {
             const contractName = path.basename(filePath, SOLIDITY_FILE_EXTENSION);
@@ -32,7 +33,6 @@ export class NameResolver extends EnumerableResolver {
         return contractSource;
     }
     public getAll(): ContractSource[] {
-        const SOLIDITY_FILE_EXTENSION = '.sol';
         const contractSources: ContractSource[] = [];
         const onFile = (filePath: string) => {
             const contractName = path.basename(filePath, SOLIDITY_FILE_EXTENSION);
@@ -59,6 +59,9 @@ export class NameResolver extends EnumerableResolver {
             const absoluteEntryPath = path.join(dirPath, fileName);
             const isDirectory = fs.lstatSync(absoluteEntryPath).isDirectory();
             const entryPath = path.relative(this._contractsDir, absoluteEntryPath);
+            if (!entryPath.endsWith(SOLIDITY_FILE_EXTENSION)) {
+                continue;
+            }
             const isComplete = isDirectory ? this._traverseContractsDir(absoluteEntryPath, onFile) : onFile(entryPath);
             if (isComplete) {
                 return isComplete;
