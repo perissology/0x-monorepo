@@ -71,6 +71,7 @@ const CONFIG_FILE = 'compiler.json';
 export class Compiler {
     private _resolver: Resolver;
     private _nameResolver: NameResolver;
+    private _solcVersion: string | undefined;
     private _contractsDir: string;
     private _compilerSettings: solc.CompilerSettings;
     private _artifactsDir: string;
@@ -84,18 +85,19 @@ export class Compiler {
         const config: CompilerOptions = fs.existsSync(CONFIG_FILE)
             ? JSON.parse(fs.readFileSync(CONFIG_FILE).toString())
             : {};
+        this._solcVersion = opts.solcVersion || config.solcVersion;
         this._contractsDir = opts.contractsDir || config.contractsDir || DEFAULT_CONTRACTS_DIR;
         this._compilerSettings = opts.compilerSettings || config.compilerSettings || DEFAULT_COMPILER_SETTINGS;
         this._artifactsDir = opts.artifactsDir || config.artifactsDir || DEFAULT_ARTIFACTS_DIR;
         this._specifiedContracts = opts.contracts || config.contracts || ALL_CONTRACTS_IDENTIFIER;
         this._nameResolver = new NameResolver(path.resolve(this._contractsDir));
         const resolver = new FallthroughResolver();
+        resolver.appendResolver(this._nameResolver);
         resolver.appendResolver(new URLResolver());
         const packagePath = path.resolve('');
         resolver.appendResolver(new NPMResolver(packagePath));
         resolver.appendResolver(new RelativeFSResolver(this._contractsDir));
         resolver.appendResolver(new FSResolver());
-        resolver.appendResolver(this._nameResolver);
         this._resolver = resolver;
     }
     /**
@@ -133,15 +135,19 @@ export class Compiler {
             const currentArtifact = currentArtifactIfExists as ContractArtifact;
             const isUserOnLatestVersion = currentArtifact.schemaVersion === constants.LATEST_ARTIFACT_VERSION;
             const didCompilerSettingsChange = !_.isEqual(currentArtifact.compiler.settings, this._compilerSettings);
+            // TODO didCompilerVersionChange
             const didSourceChange = currentArtifact.sourceTreeHashHex !== sourceTreeHashHex;
             shouldCompile = !isUserOnLatestVersion || didCompilerSettingsChange || didSourceChange;
         }
         if (!shouldCompile) {
             return;
         }
-        const solcVersionRange = parseSolidityVersionRange(contractSource.source);
-        const availableCompilerVersions = _.keys(binPaths);
-        const solcVersion = semver.maxSatisfying(availableCompilerVersions, solcVersionRange);
+        let solcVersion = this._solcVersion;
+        if (_.isUndefined(solcVersion)) {
+            const solcVersionRange = parseSolidityVersionRange(contractSource.source);
+            const availableCompilerVersions = _.keys(binPaths);
+            solcVersion = semver.maxSatisfying(availableCompilerVersions, solcVersionRange);
+        }
         const fullSolcVersion = binPaths[solcVersion];
         const compilerBinFilename = path.join(SOLC_BIN_DIR, fullSolcVersion);
         let solcjs: string;

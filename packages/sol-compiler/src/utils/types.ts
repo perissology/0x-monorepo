@@ -51,6 +51,7 @@ export interface SolcErrors {
 }
 
 export interface CompilerOptions {
+    solcVersion?: string;
     contractsDir?: string;
     artifactsDir?: string;
     compilerSettings?: solc.CompilerSettings;

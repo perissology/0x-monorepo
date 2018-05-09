@@ -4,7 +4,7 @@ import { Collector } from 'istanbul';
 import * as _ from 'lodash';
 import * as path from 'path';
 
-import { collectContractsData } from './collect_contract_data';
+import { collectContractsDataAsync } from './collect_contract_data';
 import { collectCoverageEntries } from './collect_coverage_entries';
 import { constants } from './constants';
 import { parseSourceMap } from './source_maps';
@@ -30,6 +30,7 @@ import {
 import { utils } from './utils';
 
 export class CoverageManager {
+    private _artifactsPath: string;
     private _sourcesPath: string;
     private _traceInfos: TraceInfo[] = [];
     private _contractsData: ContractData[] = [];
@@ -40,8 +41,8 @@ export class CoverageManager {
         getContractCodeAsync: (address: string) => Promise<string>,
     ) {
         this._getContractCodeAsync = getContractCodeAsync;
+        this._artifactsPath = artifactsPath;
         this._sourcesPath = sourcesPath;
-        this._contractsData = collectContractsData(artifactsPath, this._sourcesPath);
     }
     public appendTraceInfo(traceInfo: TraceInfo): void {
         this._traceInfos.push(traceInfo);
@@ -61,7 +62,9 @@ export class CoverageManager {
     ): Coverage {
         const fileName = contractData.sources[fileIndex];
         const coverageEntriesDescription = collectCoverageEntries(contractData.sourceCodes[fileIndex]);
-        let sourceRanges = _.map(coveredPcs, coveredPc => pcToSourceRange[coveredPc]);
+        let sourceRanges = _.map(coveredPcs, coveredPc => {
+            return pcToSourceRange[coveredPc];
+        });
         sourceRanges = _.compact(sourceRanges); // Some PC's don't map to a source range and we just ignore them.
         // By default lodash does a shallow object comparasion. We JSON.stringify them and compare as strings.
         sourceRanges = _.uniqBy(sourceRanges, s => JSON.stringify(s)); // We don't care if one PC was covered multiple times within a single transaction
@@ -115,7 +118,7 @@ export class CoverageManager {
             );
             statementCoverage[modifierStatementId] = isModifierCovered;
         }
-        const absoluteFileName = path.join(this._sourcesPath, fileName);
+        const absoluteFileName = fileName.startsWith('/') ? fileName : path.join(this._sourcesPath, fileName);
         const partialCoverage = {
             [absoluteFileName]: {
                 ...coverageEntriesDescription,
@@ -129,17 +132,22 @@ export class CoverageManager {
         return partialCoverage;
     }
     private async _computeCoverageAsync(): Promise<Coverage> {
+        this._contractsData = await collectContractsDataAsync(this._artifactsPath, this._sourcesPath);
         const collector = new Collector();
         for (const traceInfo of this._traceInfos) {
             if (traceInfo.address !== constants.NEW_CONTRACT) {
                 // Runtime transaction
                 let runtimeBytecode = (traceInfo as TraceInfoExistingContract).runtimeBytecode;
                 runtimeBytecode = addHexPrefix(runtimeBytecode);
-                const contractData = _.find(this._contractsData, { runtimeBytecode }) as ContractData;
+                const contractData = _.find(this._contractsData, contractDataCandidate => {
+                    let runtimeBytecodeRegex = contractDataCandidate.runtimeBytecode.replace(/_.*_/, '.*');
+                    runtimeBytecodeRegex = runtimeBytecodeRegex.replace(/.{86}$/, '');
+                    return !_.isNull(runtimeBytecode.match(runtimeBytecodeRegex));
+                }) as ContractData;
                 if (_.isUndefined(contractData)) {
                     throw new Error(`Transaction to an unknown address: ${traceInfo.address}`);
                 }
-                const bytecodeHex = contractData.runtimeBytecode.slice(2);
+                const bytecodeHex = runtimeBytecode.slice(2);
                 const sourceMap = contractData.sourceMapRuntime;
                 const pcToSourceRange = parseSourceMap(
                     contractData.sourceCodes,
@@ -160,13 +168,15 @@ export class CoverageManager {
                 // Contract creation transaction
                 let bytecode = (traceInfo as TraceInfoNewContract).bytecode;
                 bytecode = addHexPrefix(bytecode);
-                const contractData = _.find(this._contractsData, contractDataCandidate =>
-                    bytecode.startsWith(contractDataCandidate.bytecode),
-                ) as ContractData;
+                const contractData = _.find(this._contractsData, contractDataCandidate => {
+                    let bytecodeRegex = contractDataCandidate.bytecode.replace(/_.*_/, '.*');
+                    bytecodeRegex = bytecodeRegex.replace(/.{86}$/, '');
+                    return !_.isNull(bytecode.match(bytecodeRegex));
+                }) as ContractData;
                 if (_.isUndefined(contractData)) {
                     throw new Error(`Unknown contract creation transaction`);
                 }
-                const bytecodeHex = contractData.bytecode.slice(2);
+                const bytecodeHex = bytecode.slice(2);
                 const sourceMap = contractData.sourceMap;
                 const pcToSourceRange = parseSourceMap(
                     contractData.sourceCodes,
